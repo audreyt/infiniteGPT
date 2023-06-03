@@ -7,6 +7,11 @@ and keep the text as well as lines beginning with ###:
 
 """
 
+prompt = """
+In the following text, list all typos and inconsistencies as bullet points.
+
+"""
+
 import openai
 from concurrent.futures import ThreadPoolExecutor
 import tiktoken
@@ -29,8 +34,9 @@ def call_openai_api(chunk):
     while True:
         try:
             response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
+                model="gpt-4",
                 messages=[
+                    {"role": "system", "content": "You are a world-class copywriter and proofreader, proficient in Traditional Mandarin and American English."},
                     {"role": "user", "content": f"{prompt}\n{chunk}"},
                 ],
                 max_tokens=2000,
@@ -77,8 +83,8 @@ def process_chunks(input_file, output_file):
 # Specify your input and output files
 
 if __name__ == "__main__":
-    input_file = "test_input.txt"
-    output_file = "output_og.txt"
+    input_file = os.path.join(os.path.dirname(__file__), "test_input.txt")
+    output_file = os.path.join(os.path.dirname(__file__), "output_og.txt")
     process_chunks(input_file, output_file)
 
 # Can take up to a few minutes to run depending on the size of your data input
