@@ -1,10 +1,20 @@
+prompt = """
+In the following text, remove unnecessary newlines.
+Add two newslines between paragraphs.
+Change the punctuation to use full-width ones such as ，。「」,
+adding missing ones as necessary,
+and keep the text as well as lines beginning with ###:
+
+"""
+
 import openai
 from concurrent.futures import ThreadPoolExecutor
 import tiktoken
+import os
+import random
+import time
 
-# Add your own OpenAI API key
-
-openai.api_key = "sk-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def load_text(file_path):
     with open(file_path, 'r') as file:
@@ -15,33 +25,48 @@ def save_to_file(responses, output_file):
         for response in responses:
             file.write(response + '\n')
 
-# Change your OpenAI chat model accordingly
-
 def call_openai_api(chunk):
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "PASS IN ANY ARBITRARY SYSTEM VALUE TO GIVE THE AI AN IDENITY"},
-            {"role": "user", "content": f"YOUR DATA TO PASS IN: {chunk}."},
-        ],
-        max_tokens=500,
-        n=1,
-        stop=None,
-        temperature=0.5,
-    )
-    return response.choices[0]['message']['content'].strip()
+    while True:
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "user", "content": f"{prompt}\n{chunk}"},
+                ],
+                max_tokens=2000,
+                n=1,
+                stop=None,
+                temperature=0.1,
+            )
+            return response.choices[0].message.content.strip()
+        except openai.error.RateLimitError as e:
+            # Sleep for a random delay between 500ms and 1500ms before retrying
+            delay = random.randint(500, 1500) / 1000
+            print(f"Rate limit reached. Retrying in {delay:.2f}s...")
+            time.sleep(delay)
 
-def split_into_chunks(text, tokens=500):
-    encoding = tiktoken.encoding_for_model('gpt-3.5-turbo')
-    words = encoding.encode(text)
+def split_into_chunks(text, separator='### ', tokens=2000):
+    encoding = tiktoken.encoding_for_model('gpt-4')
+    paragraphs = text.split(separator)
     chunks = []
-    for i in range(0, len(words), tokens):
-        chunks.append(' '.join(encoding.decode(words[i:i + tokens])))
-    return chunks   
+    for i, paragraph in enumerate(paragraphs):
+        if i > 0:
+            paragraph = f'{separator}{paragraph}'
+        cnt = len(encoding.encode(paragraph))
+        if cnt > tokens:
+            subchunks = split_into_chunks(paragraph, '\n', tokens)
+            chunks.extend(subchunks)
+        elif len(chunks) == 0:
+            chunks.append(paragraph)
+        elif len(encoding.encode(f"{chunks[-1]}{paragraph}")) < tokens:
+            chunks[-1] = f"{chunks[-1]}{paragraph}"
+        else:
+            chunks.append(paragraph)
+    return chunks
 
 def process_chunks(input_file, output_file):
     text = load_text(input_file)
-    chunks = split_into_chunks(text)
+    chunks = [chunk for chunk in split_into_chunks(text) if chunk.strip()]
     
     # Processes chunks in parallel
     with ThreadPoolExecutor() as executor:
